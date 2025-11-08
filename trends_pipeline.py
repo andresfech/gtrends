@@ -202,7 +202,10 @@ def write_to_sheet(gc, df: pd.DataFrame, worksheet_title: str):
     try:
         sh = gc.open(SPREADSHEET_NAME)
     except Exception:
-        sh = gc.create(SPREADSHEET_NAME)
+        raise RuntimeError(
+            f"Spreadsheet '{SPREADSHEET_NAME}' not found or inaccessible. "
+            "Ensure it exists and is shared with the service account."
+        )
     try:
         ws = sh.worksheet(worksheet_title)
         sh.del_worksheet(ws)
