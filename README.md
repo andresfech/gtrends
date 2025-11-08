@@ -61,4 +61,4 @@ Runs **daily** and **weekly** via GitHub Actions, writes normalized time series 
 ## Notes
 
 - Google Trends allows **max 5 terms** per query. This project batches terms with a constant **anchor** (`"Ria Money Transfer"`) to normalize results across batches.
-- We output **daily (12 months)** and **weekly (5 years)** series per geo into separate sheet tabs: `GEO_daily` and `GEO_weekly`.
+- We output **daily (6 months)** and **weekly (5 years)** series per geo into separate sheet tabs: `GEO_daily` and `GEO_weekly`.

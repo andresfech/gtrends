@@ -24,7 +24,7 @@ ANCHOR_DEFAULT = "Ria Money Transfer"
 GEOS_DEFAULT = ["US", "CA", "CL", "ES"]
 
 # Timeframes
-TF_DAILY = "today 12-m"  # daily granularity ~ last 12 months
+TF_DAILY = "today 6-m"  # daily granularity ~ last 6 months
 TF_WEEKLY = "today 5-y"  # weekly granularity ~ last 5 years
 
 # Google Sheets
