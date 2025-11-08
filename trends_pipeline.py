@@ -316,11 +316,18 @@ def parse_args():
         action="store_true",
         help="Resolve keywords to their top Google Trends topic IDs before fetching.",
     )
+    parser.add_argument(
+        "--use-topics-env",
+        dest="use_topics_env",
+        action="store_true",
+        help="Internal flag to enable topics via environment variable.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    use_topics = args.use_topics or args.use_topics_env or os.getenv("PYTRENDS_USE_TOPICS", "").lower() in {"1", "true", "yes"}
 
     pytrends = TrendReq(hl="en-US", tz=0)
 
@@ -334,7 +341,7 @@ def main():
 
     for display in keywords_display:
         query = display
-        if args.use_topics:
+        if use_topics:
             try:
                 suggestions = pytrends.suggestions(display)
                 if suggestions:
