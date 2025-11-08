@@ -30,6 +30,7 @@ Runs **daily** and **weekly** via GitHub Actions, writes normalized time series 
 - `--daily` / `--weekly` let you run one timeframe; run neither to fetch both.
 - `--geos`, `--keywords`, `--anchor` accept comma-separated overrides.
 - `--resume-from-geo`, `--resume-from-phase` let you pick up a halted run.
+- `--use-topics` swaps raw keywords for Google Trends topic IDs (when available) so related queries roll up under one label.
 
 ## GitHub Actions (Cloud Automation)
 

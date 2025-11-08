@@ -2,7 +2,7 @@ import os
 import time
 import argparse
 import datetime as dt
-from typing import List
+from typing import List, Dict
 
 import pandas as pd
 from pytrends.request import TrendReq
@@ -78,6 +78,7 @@ def fetch_trends_batch(
     terms: List[str],
     geo: str,
     timeframe: str,
+    alias_map: Dict[str, str],
     max_retries: int = 5,
     backoff_sec: float = 60.0,
 ) -> pd.DataFrame:
@@ -90,6 +91,13 @@ def fetch_trends_batch(
             df = pytrends.interest_over_time().reset_index()
             if "isPartial" in df.columns:
                 df = df.drop(columns=["isPartial"])
+            rename_map = {
+                col: alias_map.get(col, col)
+                for col in df.columns
+                if col in alias_map
+            }
+            if rename_map:
+                df = df.rename(columns=rename_map)
             return df  # columns: date + one col per term
         except pytrends_exceptions.TooManyRequestsError:
             if attempt == max_retries:
@@ -120,7 +128,9 @@ def normalize_to_anchor(first_anchor: pd.Series, current_anchor: pd.Series) -> f
 def stitch_batches(
     pytrends: TrendReq,
     all_keywords: List[str],
-    anchor: str,
+    anchor_term: str,
+    anchor_label: str,
+    alias_map: Dict[str, str],
     geo: str,
     timeframe: str,
     sleep_between_batches: float,
@@ -133,7 +143,7 @@ def stitch_batches(
     2) Use the anchor overlap to scale subsequent batches to the first batch
     3) Return a wide DF: date + one column per keyword, normalized across batches
     """
-    batches = chunk_with_anchor(all_keywords, anchor, limit=max_terms_per_batch)
+    batches = chunk_with_anchor(all_keywords, anchor_term, limit=max_terms_per_batch)
     stitched = None
     base_anchor_col = None
 
@@ -143,6 +153,7 @@ def stitch_batches(
             terms,
             geo,
             timeframe,
+            alias_map=alias_map,
             max_retries=max_retries,
             backoff_sec=backoff_sec,
         )
@@ -150,26 +161,30 @@ def stitch_batches(
 
         if idx == 0:
             stitched = df.copy()
-            base_anchor_col = stitched[anchor].copy()
+            base_anchor_col = stitched[anchor_label].copy()
         else:
             # compute scaling factor for this batch anchor -> base anchor
-            factor = normalize_to_anchor(base_anchor_col, df[anchor])
+            factor = normalize_to_anchor(base_anchor_col, df[anchor_label])
             # scale non-date columns (except date)
             for col in terms:
                 if col == "date":
                     continue
-                df[col] = df[col] * factor
+                label = alias_map.get(col, col)
+                if label == anchor_label:
+                    continue
+                df[label] = df[label] * factor
             # combine into stitched
             for col in terms:
-                if col in ["date", anchor]:
+                label = alias_map.get(col, col)
+                if label in ["date", anchor_label]:
                     continue  # anchor already exists from first batch
-                if col not in stitched.columns:
-                    stitched = stitched.merge(df[["date", col]], on="date", how="outer")
+                if label not in stitched.columns:
+                    stitched = stitched.merge(df[["date", label]], on="date", how="outer")
                 else:
                     # combine by taking max across overlaps (both are normalized)
-                    merged = stitched[["date", col]].merge(df[["date", col]], on="date", how="outer", suffixes=("_x", "_y"))
-                    merged[col] = merged[[f"{col}_x", f"{col}_y"]].max(axis=1, skipna=True)
-                    stitched = stitched.drop(columns=[col]).merge(merged[["date", col]], on="date", how="outer")
+                    merged = stitched[["date", label]].merge(df[["date", label]], on="date", how="outer", suffixes=("_x", "_y"))
+                    merged[label] = merged[[f"{label}_x", f"{label}_y"]].max(axis=1, skipna=True)
+                    stitched = stitched.drop(columns=[label]).merge(merged[["date", label]], on="date", how="outer")
 
     # sort by date, fill missing with 0
     stitched = stitched.sort_values("date").reset_index(drop=True).fillna(0)
@@ -293,18 +308,45 @@ def parse_args():
         default="",
         help="Skip phases before this value.",
     )
+    parser.add_argument(
+        "--use-topics",
+        action="store_true",
+        help="Resolve keywords to their top Google Trends topic IDs before fetching.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    keywords = args.keywords
-    anchor = args.anchor
-    if anchor not in keywords:
-        raise ValueError(f"Anchor '{anchor}' must be present in keyword list.")
-
     pytrends = TrendReq(hl="en-US", tz=0)
+
+    keywords_display = args.keywords
+    anchor_display = args.anchor
+    if anchor_display not in keywords_display:
+        raise ValueError(f"Anchor '{anchor_display}' must be present in keyword list.")
+
+    display_to_query: Dict[str, str] = {}
+    query_to_display: Dict[str, str] = {}
+
+    for display in keywords_display:
+        query = display
+        if args.use_topics:
+            try:
+                suggestions = pytrends.suggestions(display)
+                if suggestions:
+                    candidate = suggestions[0].get("mid")
+                    if candidate:
+                        query = candidate
+            except Exception:
+                # fallback to raw keyword if suggestions fail
+                query = display
+        display_to_query[display] = query
+        query_to_display[query] = display
+
+    anchor_query = display_to_query[anchor_display]
+    keywords_query_order = [display_to_query[name] for name in keywords_display]
+
     gc = _ensure_gspread_client() if USE_GSPREAD else None
 
     run_daily = args.run_daily or (not args.run_daily and not args.run_weekly)
@@ -326,8 +368,10 @@ def main():
             print(f"[INFO] Fetching daily data for {geo_upper}...")
             daily = stitch_batches(
                 pytrends,
-                keywords,
-                anchor,
+                keywords_query_order,
+                anchor_query,
+                anchor_display,
+                query_to_display,
                 geo=geo_upper,
                 timeframe=TF_DAILY,
                 sleep_between_batches=args.sleep_sec,
@@ -337,7 +381,7 @@ def main():
             )
             if gc:
                 write_to_sheet(gc, daily, worksheet_title=f"{geo_upper}_daily")
-            maybe_send_spike_alert(daily, geo=geo_upper, anchor=anchor)
+            maybe_send_spike_alert(daily, geo=geo_upper, anchor=anchor_display)
 
     if run_weekly and should_run_phase("weekly"):
         for geo in args.geos:
@@ -347,8 +391,10 @@ def main():
             print(f"[INFO] Fetching weekly data for {geo_upper}...")
             weekly = stitch_batches(
                 pytrends,
-                keywords,
-                anchor,
+                keywords_query_order,
+                anchor_query,
+                anchor_display,
+                query_to_display,
                 geo=geo_upper,
                 timeframe=TF_WEEKLY,
                 sleep_between_batches=args.sleep_sec,
