@@ -24,7 +24,7 @@ ANCHOR_DEFAULT = "Ria Money Transfer"
 GEOS_DEFAULT = ["US", "CA", "CL", "ES"]
 
 # Timeframes
-TF_DAILY = "today 6-m"  # daily granularity ~ last 6 months
+DAILY_LOOKBACK_DAYS_DEFAULT = int(os.getenv("PYTRENDS_DAILY_DAYS", "180"))  # <=270 for true daily
 TF_WEEKLY = "today 5-y"  # weekly granularity ~ last 5 years
 
 # Google Sheets
@@ -270,6 +270,12 @@ def parse_args():
         help="Run daily timeframe (default when neither --daily nor --weekly is set).",
     )
     parser.add_argument(
+        "--daily-days",
+        type=int,
+        default=DAILY_LOOKBACK_DAYS_DEFAULT,
+        help="Number of trailing days for the daily range (max ~270 for actual daily resolution).",
+    )
+    parser.add_argument(
         "--weekly",
         dest="run_weekly",
         action="store_true",
@@ -336,6 +342,13 @@ def main():
     if anchor_display not in keywords_display:
         raise ValueError(f"Anchor '{anchor_display}' must be present in keyword list.")
 
+    daily_days = args.daily_days
+    if daily_days > 270:
+        raise ValueError("daily-days must be <= 270 to preserve daily resolution.")
+    daily_end_date = dt.date.today()
+    daily_start_date = daily_end_date - dt.timedelta(days=daily_days)
+    daily_timeframe = f"{daily_start_date:%Y-%m-%d} {daily_end_date:%Y-%m-%d}"
+
     display_to_query: Dict[str, str] = {}
     query_to_display: Dict[str, str] = {}
 
@@ -383,7 +396,7 @@ def main():
                 anchor_display,
                 query_to_display,
                 geo=geo_upper,
-                timeframe=TF_DAILY,
+                timeframe=daily_timeframe,
                 sleep_between_batches=args.sleep_sec,
                 max_terms_per_batch=args.max_terms_per_batch,
                 max_retries=args.max_retries,

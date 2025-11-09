@@ -31,6 +31,7 @@ Runs **daily** and **weekly** via GitHub Actions, writes normalized time series 
 - `--geos`, `--keywords`, `--anchor` accept comma-separated overrides.
 - `--resume-from-geo`, `--resume-from-phase` let you pick up a halted run.
 - `--use-topics` swaps raw keywords for Google Trends topic IDs (when available) so related queries roll up under one label. Set `PYTRENDS_USE_TOPICS=true` (or `yes/1`) to enable topics for GitHub Actions.
+- `--daily-days` controls the trailing range for daily fetches (default 180). Adjust via CLI or set `PYTRENDS_DAILY_DAYS`.
 
 ## GitHub Actions (Cloud Automation)
 
