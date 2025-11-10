@@ -12,16 +12,11 @@ from pytrends import exceptions as pytrends_exceptions
 KEYWORDS_DEFAULT = [
     "Ria Money Transfer",      # anchor
     "Western Union",
-    "Remitly",
-    "Wise money transfer",
-    "TapTap Send",
     "MoneyGram",
-    "Felix Pago",
-    "Xoom money transfer",
     "Global66",
 ]
 ANCHOR_DEFAULT = "Ria Money Transfer"
-GEOS_DEFAULT = ["US", "CA", "CL", "ES"]
+GEOS_DEFAULT = ["CL"]
 
 # Timeframes
 DAILY_LOOKBACK_DAYS_DEFAULT = int(os.getenv("PYTRENDS_DAILY_DAYS", "180"))  # <=270 for true daily
@@ -351,6 +346,7 @@ def main():
 
     display_to_query: Dict[str, str] = {}
     query_to_display: Dict[str, str] = {}
+    topic_messages = []
 
     for display in keywords_display:
         query = display
@@ -361,11 +357,18 @@ def main():
                     candidate = suggestions[0].get("mid")
                     if candidate:
                         query = candidate
+                        topic_messages.append(f"{display} -> {candidate}")
             except Exception:
                 # fallback to raw keyword if suggestions fail
                 query = display
         display_to_query[display] = query
         query_to_display[query] = display
+
+    if use_topics:
+        if topic_messages:
+            print("[INFO] Topic mappings: " + ", ".join(topic_messages))
+        else:
+            print("[WARN] Topic lookup enabled but no topics were resolved; falling back to raw terms.")
 
     anchor_query = display_to_query[anchor_display]
     keywords_query_order = [display_to_query[name] for name in keywords_display]
