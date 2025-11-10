@@ -28,10 +28,11 @@ Runs **daily** and **weekly** via GitHub Actions, writes normalized time series 
 - `--sleep-sec` controls the pause between payloads (default from `PYTRENDS_SLEEP_SEC`).
 - `--max-retries` + `--backoff-sec` apply exponential retry when Google returns 429.
 - `--daily` / `--weekly` let you run one timeframe; run neither to fetch both.
-- `--geos`, `--keywords`, `--anchor` accept comma-separated overrides (defaults: `CL` geo and keywords `Ria Money Transfer, Western Union, MoneyGram, Global66`).
+- `--geos`, `--keywords`, `--anchor` accept comma-separated overrides (defaults: geos `US,CA,CL,ES` and keywords `Ria Money Transfer, Western Union, Remitly, Wise money transfer, TapTap Send, MoneyGram, Felix Pago, Xoom money transfer, Global66`). Override a specific geo via env var `PYTRENDS_KEYWORDS_<GEO>` (ex: `PYTRENDS_KEYWORDS_CL="Ria Money Transfer,Western Union,MoneyGram,Global66"`).
 - `--resume-from-geo`, `--resume-from-phase` let you pick up a halted run.
 - `--use-topics` swaps raw keywords for Google Trends topic IDs (when available) so related queries roll up under one label. Set `PYTRENDS_USE_TOPICS=true` (or `yes/1`) to enable topics for GitHub Actions.
 - `--daily-days` controls the trailing range for daily fetches (default 180). Adjust via CLI or set `PYTRENDS_DAILY_DAYS`.
+- Chile (`CL`) defaults to a slimmer competitor list (`Ria Money Transfer, Western Union, MoneyGram, Global66`). Change it via `PYTRENDS_KEYWORDS_CL` or CLI overrides if you need more brands.
 
 ## GitHub Actions (Cloud Automation)
 

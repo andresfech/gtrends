@@ -12,11 +12,19 @@ from pytrends import exceptions as pytrends_exceptions
 KEYWORDS_DEFAULT = [
     "Ria Money Transfer",      # anchor
     "Western Union",
+    "Remitly",
+    "Wise money transfer",
+    "TapTap Send",
     "MoneyGram",
+    "Felix Pago",
+    "Xoom money transfer",
     "Global66",
 ]
 ANCHOR_DEFAULT = "Ria Money Transfer"
-GEOS_DEFAULT = ["CL"]
+GEOS_DEFAULT = ["US", "CA", "CL", "ES"]
+GEO_KEYWORD_OVERRIDES = {
+    "CL": ["Ria Money Transfer", "Western Union", "MoneyGram", "Global66"],
+}
 
 # Timeframes
 DAILY_LOOKBACK_DAYS_DEFAULT = int(os.getenv("PYTRENDS_DAILY_DAYS", "180"))  # <=270 for true daily
@@ -326,15 +334,29 @@ def parse_args():
     return parser.parse_args()
 
 
+def _parse_env_keyword_override(geo: str) -> List[str]:
+    env_val = os.getenv(f"PYTRENDS_KEYWORDS_{geo}", "")
+    if not env_val:
+        return []
+    return [kw.strip() for kw in env_val.split(",") if kw.strip()]
+
+
+def get_keywords_for_geo(geo: str, base_keywords: List[str]) -> List[str]:
+    env_override = _parse_env_keyword_override(geo)
+    if env_override:
+        return env_override
+    if geo in GEO_KEYWORD_OVERRIDES:
+        return GEO_KEYWORD_OVERRIDES[geo]
+    return base_keywords
+
+
 def main():
     args = parse_args()
     use_topics = args.use_topics or args.use_topics_env or os.getenv("PYTRENDS_USE_TOPICS", "").lower() in {"1", "true", "yes"}
 
-    pytrends = TrendReq(hl="en-US", tz=0)
-
-    keywords_display = args.keywords
+    base_keywords_display = args.keywords
     anchor_display = args.anchor
-    if anchor_display not in keywords_display:
+    if anchor_display not in base_keywords_display:
         raise ValueError(f"Anchor '{anchor_display}' must be present in keyword list.")
 
     daily_days = args.daily_days
@@ -344,35 +366,7 @@ def main():
     daily_start_date = daily_end_date - dt.timedelta(days=daily_days)
     daily_timeframe = f"{daily_start_date:%Y-%m-%d} {daily_end_date:%Y-%m-%d}"
 
-    display_to_query: Dict[str, str] = {}
-    query_to_display: Dict[str, str] = {}
-    topic_messages = []
-
-    for display in keywords_display:
-        query = display
-        if use_topics:
-            try:
-                suggestions = pytrends.suggestions(display)
-                if suggestions:
-                    candidate = suggestions[0].get("mid")
-                    if candidate:
-                        query = candidate
-                        topic_messages.append(f"{display} -> {candidate}")
-            except Exception:
-                # fallback to raw keyword if suggestions fail
-                query = display
-        display_to_query[display] = query
-        query_to_display[query] = display
-
-    if use_topics:
-        if topic_messages:
-            print("[INFO] Topic mappings: " + ", ".join(topic_messages))
-        else:
-            print("[WARN] Topic lookup enabled but no topics were resolved; falling back to raw terms.")
-
-    anchor_query = display_to_query[anchor_display]
-    keywords_query_order = [display_to_query[name] for name in keywords_display]
-
+    pytrends = TrendReq(hl="en-US", tz=0)
     gc = _ensure_gspread_client() if USE_GSPREAD else None
 
     run_daily = args.run_daily or (not args.run_daily and not args.run_weekly)
@@ -391,6 +385,38 @@ def main():
             geo_upper = geo.upper()
             if resume_geo and geo_upper < resume_geo:
                 continue
+            geo_keywords_display = get_keywords_for_geo(geo_upper, base_keywords_display)
+            if anchor_display not in geo_keywords_display:
+                raise ValueError(f"Anchor '{anchor_display}' must be present in keyword list for geo {geo_upper}.")
+
+            display_to_query: Dict[str, str] = {}
+            query_to_display: Dict[str, str] = {}
+            topic_messages = []
+
+            for display in geo_keywords_display:
+                query = display
+                if use_topics:
+                    try:
+                        suggestions = pytrends.suggestions(display)
+                        if suggestions:
+                            candidate = suggestions[0].get("mid")
+                            if candidate:
+                                query = candidate
+                                topic_messages.append(f"{geo_upper}: {display} -> {candidate}")
+                    except Exception:
+                        query = display
+                display_to_query[display] = query
+                query_to_display[query] = display
+
+            if use_topics:
+                if topic_messages:
+                    print("[INFO] Topic mappings: " + ", ".join(topic_messages))
+                else:
+                    print(f"[WARN] Topic lookup enabled but no topics resolved for {geo_upper}; using raw terms.")
+
+            anchor_query = display_to_query[anchor_display]
+            keywords_query_order = [display_to_query[name] for name in geo_keywords_display]
+
             print(f"[INFO] Fetching daily data for {geo_upper}...")
             daily = stitch_batches(
                 pytrends,
@@ -414,6 +440,38 @@ def main():
             geo_upper = geo.upper()
             if resume_geo and geo_upper < resume_geo:
                 continue
+            geo_keywords_display = get_keywords_for_geo(geo_upper, base_keywords_display)
+            if anchor_display not in geo_keywords_display:
+                raise ValueError(f"Anchor '{anchor_display}' must be present in keyword list for geo {geo_upper}.")
+
+            display_to_query: Dict[str, str] = {}
+            query_to_display: Dict[str, str] = {}
+            topic_messages = []
+
+            for display in geo_keywords_display:
+                query = display
+                if use_topics:
+                    try:
+                        suggestions = pytrends.suggestions(display)
+                        if suggestions:
+                            candidate = suggestions[0].get("mid")
+                            if candidate:
+                                query = candidate
+                                topic_messages.append(f"{geo_upper}: {display} -> {candidate}")
+                    except Exception:
+                        query = display
+                display_to_query[display] = query
+                query_to_display[query] = display
+
+            if use_topics:
+                if topic_messages:
+                    print("[INFO] Topic mappings: " + ", ".join(topic_messages))
+                else:
+                    print(f"[WARN] Topic lookup enabled but no topics resolved for {geo_upper}; using raw terms.")
+
+            anchor_query = display_to_query[anchor_display]
+            keywords_query_order = [display_to_query[name] for name in geo_keywords_display]
+
             print(f"[INFO] Fetching weekly data for {geo_upper}...")
             weekly = stitch_batches(
                 pytrends,
