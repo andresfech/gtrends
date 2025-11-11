@@ -101,9 +101,14 @@ def fetch_trends_batch(
             }
             if rename_map:
                 df = df.rename(columns=rename_map)
+            print(f"[INFO] Retrieved {len(df)} rows for {geo} {timeframe} on attempt {attempt}.")
             return df  # columns: date + one col per term
         except pytrends_exceptions.TooManyRequestsError:
             if attempt == max_retries:
+                print(
+                    f"[ERROR] Exhausted retries for {geo} {timeframe} terms={terms}. "
+                    f"Giving up after {attempt} attempts."
+                )
                 raise
             sleep_for = backoff_sec * attempt
             print(
@@ -111,6 +116,7 @@ def fetch_trends_batch(
                 f"Retrying in {sleep_for:.0f}s (attempt {attempt}/{max_retries})."
             )
             time.sleep(sleep_for)
+    raise RuntimeError("Unexpected retry loop exit in fetch_trends_batch")
 
 
 def normalize_to_anchor(first_anchor: pd.Series, current_anchor: pd.Series) -> float:
@@ -365,6 +371,8 @@ def main():
     daily_end_date = dt.date.today()
     daily_start_date = daily_end_date - dt.timedelta(days=daily_days)
     daily_timeframe = f"{daily_start_date:%Y-%m-%d} {daily_end_date:%Y-%m-%d}"
+    print(f"[INFO] Daily timeframe: {daily_timeframe}")
+    print(f"[INFO] Weekly timeframe: {TF_WEEKLY}")
 
     pytrends = TrendReq(hl="en-US", tz=0)
     gc = _ensure_gspread_client() if USE_GSPREAD else None
@@ -416,6 +424,7 @@ def main():
 
             anchor_query = display_to_query[anchor_display]
             keywords_query_order = [display_to_query[name] for name in geo_keywords_display]
+            print(f"[INFO] Terms for {geo_upper}: {', '.join(geo_keywords_display)}")
 
             print(f"[INFO] Fetching daily data for {geo_upper}...")
             daily = stitch_batches(

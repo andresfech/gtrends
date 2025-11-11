@@ -6,9 +6,20 @@ on:
     - cron: "0 7 * * 1"   # weekly 07:00 UTC Mondays
   workflow_dispatch:
 
+env:
+  TRENDS_SHEET_NAME: ${{ vars.TRENDS_SHEET_NAME || 'Brand Trends Dashboard' }}
+  PYTRENDS_SLEEP_SEC: ${{ vars.PYTRENDS_SLEEP_SEC || '180' }}
+  PYTRENDS_MAX_RETRIES: ${{ vars.PYTRENDS_MAX_RETRIES || '8' }}
+  PYTRENDS_BACKOFF_SEC: ${{ vars.PYTRENDS_BACKOFF_SEC || '180' }}
+  PYTRENDS_USE_TOPICS: ${{ vars.PYTRENDS_USE_TOPICS || 'true' }}
+
 jobs:
-  run:
+  run-all-geos:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        geo: [US, CA, CL, ES]
+      max-parallel: 1
     steps:
       - uses: actions/checkout@v4
 
@@ -28,12 +39,20 @@ jobs:
         run: |
           echo "$GOOGLE_SERVICE_ACCOUNT_JSON" > service_account.json
 
-      - name: Run pipeline
+      - name: Run pipeline for ${{ matrix.geo }}
         env:
-          TRENDS_SHEET_NAME: "Brand Trends Dashboard"
-          PYTRENDS_SLEEP_SEC: ${{ vars.PYTRENDS_SLEEP_SEC || '2.0' }}
-          PYTRENDS_MAX_RETRIES: ${{ vars.PYTRENDS_MAX_RETRIES || '5' }}
-          PYTRENDS_BACKOFF_SEC: ${{ vars.PYTRENDS_BACKOFF_SEC || '60' }}
+          GEO: ${{ matrix.geo }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PYTRENDS_RESUME_FROM_GEO: ${{ vars.PYTRENDS_RESUME_FROM_GEO }}
+          PYTRENDS_RESUME_FROM_PHASE: ${{ vars.PYTRENDS_RESUME_FROM_PHASE }}
         run: |
-          python trends_pipeline.py
+          echo "Processing geo ${GEO}"
+          echo "Using sleep=${PYTRENDS_SLEEP_SEC}s, retries=${PYTRENDS_MAX_RETRIES}, backoff=${PYTRENDS_BACKOFF_SEC}s"
+          RESUME_ARGS=""
+          if [ -n "${PYTRENDS_RESUME_FROM_GEO}" ]; then
+            RESUME_ARGS="${RESUME_ARGS} --resume-from-geo=${PYTRENDS_RESUME_FROM_GEO}"
+          fi
+          if [ -n "${PYTRENDS_RESUME_FROM_PHASE}" ]; then
+            RESUME_ARGS="${RESUME_ARGS} --resume-from-phase=${PYTRENDS_RESUME_FROM_PHASE}"
+          fi
+          python trends_pipeline.py --geos=${GEO} ${RESUME_ARGS}
